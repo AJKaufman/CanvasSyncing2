@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <style>
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding:0;
+      }
+      
+      canvas {
+        margin: 10px;
+        border: 1px solid black;
+        position: absolute;
+      }
+      
+      p {
+        margin-left: 12px;
+        font-size: 1.2em;
+        width: 50%; 
+      }
+    </style>
+    
+    <script src="https://npmcdn.com/babel-core@5.8.38/browser.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/babel" >
+        "use strict";
+
+        let canvas;
+        let ctx;
+        let sendBufferCanvas;
+        let sendBufferCtx;
+        let socket;
+        let rects = {};
+        let myId;
+        let origin;
+        let topCanvas;
+        let topCtx;
+        
+        // mouse unabstuff
+        let dragging
+        
+        const update = () => {
+            if(dragging) {
+                const time = new Date().getTime();
+                const data = {
+                    x: 0,
+                    y: 0,
+                    height: canvas.height,
+                    width: canvas.width,
+                    imgData: topCanvas.toDataURL(), // get pixel data from canvas
+                };
+                socket.emit('draw', data);
+            }
+            
+        };
+        
+        // mouse functions
+        const doMouseDown = (e) => {
+          
+            dragging = true; 
+
+            console.log("click");
+            //get location of mouse in canvas coordinates
+            let mouse = getMouse(e);
+
+            topCtx.beginPath();
+            ctx.beginPath();
+
+            //move pen to x,y of mouse
+            topCtx.moveTo(mouse.x,mouse.y);
+            ctx.moveTo(mouse.x,mouse.y);
+            
+        };
+
+        const doMouseMove = (e) => {
+            
+            // bail out if the mouse button is not down
+            if(!dragging) return;
+        
+            // get location of mouse in canvas coordinates
+            let mouse = getMouse(e);
+            
+            ctx.style = 'red';
+            topCtx.style = 'red';
+            
+            // draw a line to x,y of mouse
+            topCtx.lineTo(mouse.x, mouse.y);
+            ctx.lineTo(mouse.x, mouse.y);
+        
+            // stroke the line
+            topCtx.stroke();
+            ctx.stroke();
+            
+        };
+        
+        const doMouseUp = (e) => {
+            topCtx.closePath();
+            ctx.closePath();
+            
+            dragging = false;
+        };
+
+        const doMouseOut = (e) => {
+            topCtx.closePath();
+            ctx.closePath();
+            
+            dragging = false;
+            
+        }
+
+        const setupSocket = () => {
+            
+            socket = io.connect();
+            
+            canvas = document.querySelector('#canvas')
+            ctx = canvas.getContext('2d');
+            canvas.onmousedown = doMouseDown;
+            canvas.onmousemove = doMouseMove;
+            canvas.onmouseup = doMouseUp;
+            canvas.onmouseout = doMouseOut;    
+            
+            topCanvas = document.querySelector('#topCanvas');
+            topCtx = topCanvas.getContext('2d');
+            topCanvas.onmousedown = doMouseDown;
+            topCanvas.onmousemove = doMouseMove;
+            topCanvas.onmouseup = doMouseUp;
+            topCanvas.onmouseout = doMouseOut;
+        
+            
+            const data = {
+                x: 0,
+                y: 0,
+                height: canvas.height,
+                width: canvas.width,
+                imgData: topCanvas.toDataURL(), // get pixel data from canvas
+            };
+            socket.emit('draw', data);
+            
+            
+            socket.on('connect', () => {
+              socket.emit('join', {});
+            });
+            
+            // when someone else broadcasts a new rect to the server
+            socket.on('updateCanvas', (data) => {
+                handleMessage(data);
+            });
+            
+            socket.on('retrieveData', () => {
+              
+                const data = {
+                    x: 0,
+                    y: 0,
+                    height: canvas.height,
+                    width: canvas.width,
+                    imgData: topCanvas.toDataURL(), // get pixel data from canvas
+                }
+                socket.emit('draw', data);
+            });
+            
+            setInterval( () => {
+                update();
+            }, 100);
+            
+        };
+        
+        // Utility
+        const getMouse = (e) => {
+            let mouse = {}
+            mouse.x = e.pageX - e.target.offsetLeft;
+            mouse.y = e.pageY - e.target.offsetTop;
+            return mouse;
+        };
+
+        // 
+        const handleMessage = (data) =>{
+            let image = new Image();
+            
+            console.log('handling');
+            
+            image.onload = () => {
+                ctx.save();
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.drawImage(image, data.x, data.y, data.width, data.height);
+                ctx.restore();
+            };
+            
+            image.src = data.imgData;
+        };
+
+
+
+        const init = () => {            
+            // setup the socket
+            setupSocket();
+        };
+        
+        window.onload = init;
+            
+    
+    </script>
+</head>
+<body>
+    <canvas id="canvas" height="480" width="640">Please use an HTML 5 browser</canvas>
+    <canvas id="topCanvas" height="480" width="640">Please use an HTML 5 browser</canvas>
+    
+</body>
+</html>
